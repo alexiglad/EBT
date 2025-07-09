@@ -167,6 +167,14 @@ class ModelTrainer(L.LightningModule):
             for name, module in self.model.named_modules(): # for activation logging
                 module.name = name
 
+        # Initialize step-based tracking for accurate perplexity calculation
+        if self.hparams.modality == "NLP":
+            self.step_stats = {
+                "train": {"total_loss": 0.0, "total_tokens": 0, "step_count": 0},
+                "valid": {"total_loss": 0.0, "total_tokens": 0, "step_count": 0}, 
+                "test": {"total_loss": 0.0, "total_tokens": 0, "step_count": 0}
+            }
+
         
     def on_train_start(self):
         if self.hparams.debug_unused_parameters: 
@@ -615,6 +623,16 @@ class ModelTrainer(L.LightningModule):
             else:
                 raise ValueError(f"unsupported type/format in log_metrics, type:, {type(value)}, key: {key}")
 
+        # Accumulate data for accurate perplexity calculation
+        if self.hparams.modality == "NLP" and 'batch_total_loss' in metrics_dict and 'batch_num_tokens' in metrics_dict:
+            self.step_stats[phase]["total_loss"] += metrics_dict['batch_total_loss']
+            self.step_stats[phase]["total_tokens"] += metrics_dict['batch_num_tokens']
+            self.step_stats[phase]["step_count"] += 1
+            
+            # Check if we've hit the logging interval - calculate accurate perplexity
+            if hasattr(self.hparams, 'log_every_n_steps') and self.step_stats[phase]["step_count"] % self.hparams.log_every_n_steps == 0:
+                self._log_accurate_perplexity_for_window(phase)
+
         if scalar_metrics:
             self.log_dict(scalar_metrics, sync_dist=True, prog_bar=True)
         
@@ -627,3 +645,17 @@ class ModelTrainer(L.LightningModule):
         else:
             current_lr = self.trainer.optimizers[0].param_groups[-1]['lr'] # relies on lr for most of model being the last param
             self.log("Global_LR", current_lr)
+    
+    def _log_accurate_perplexity_for_window(self, phase):
+        """Calculate and log accurate perplexity using token-weighted loss averaging over the last N steps."""
+        stats = self.step_stats[phase]
+        if stats["total_tokens"] > 0:
+            # Calculate true average loss per token over the window
+            avg_loss = stats["total_loss"] / stats["total_tokens"]
+            # Calculate accurate perplexity
+            accurate_ppl = torch.exp(torch.tensor(avg_loss, device=self.device))
+            self.log(f"{phase}_accurate_perplexity", accurate_ppl)
+            
+            # Reset for next window
+            stats["total_loss"] = 0.0
+            stats["total_tokens"] = 0

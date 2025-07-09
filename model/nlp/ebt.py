@@ -233,13 +233,18 @@ class EBT_NLP(L.LightningModule):
             total_loss = self.hparams.reconstruction_coeff * reconstruction_loss
             contrastive_loss = 0.0
 
+        # Count non-padded tokens for accurate perplexity calculation
+        num_tokens = (next_token_indices != self.tokenizer_pad_token_id).sum().item()
+        
         log_dict = {
             'loss': total_loss,
             'initial_loss' : initial_loss,
             'final_step_loss': final_reconstruction_loss,
             'contrastive_loss' : contrastive_loss,
             'initial_final_pred_energies_gap': initial_final_pred_energies_gap,
-            'perplexity': ppl_loss
+            'perplexity': ppl_loss,
+            'batch_total_loss': final_reconstruction_loss * num_tokens,  # For accurate perplexity
+            'batch_num_tokens': num_tokens  # For accurate perplexity
         }
         return log_dict
     

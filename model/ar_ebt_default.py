@@ -531,7 +531,7 @@ class EBTDefault(nn.Module):
             start_pos (int): Starting position for attention caching.
 
         Returns:
-            torch.Tensor: Output logits after applying the Transformer model.
+            torch.Tensor: Output energies after applying the Transformer model.
 
         """
         _bsz, seqlen = embeddings.shape[:2]

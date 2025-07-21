@@ -63,8 +63,13 @@ class Baseline_Transformer_NLP(L.LightningModule):
         cce_loss = F.nll_loss(predicted_distribution, next_token_indices, ignore_index=self.tokenizer_pad_token_id)
         ppl_loss = torch.exp(cce_loss).detach()
 
+        # Count non-padded tokens for accurate perplexity calculation
+        num_tokens = (next_token_indices != self.tokenizer_pad_token_id).sum().item()
+
         log_dict = {
             'loss': cce_loss,
-            'perplexity': ppl_loss
+            'perplexity': ppl_loss,
+            'batch_total_loss': cce_loss * num_tokens,  # For accurate perplexity
+            'batch_num_tokens': num_tokens  # For accurate perplexity
         }
         return log_dict

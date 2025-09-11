@@ -76,7 +76,7 @@ class EBT_IMG_T2I(L.LightningModule):
             alpha = low + torch.rand_like(expanded_alpha) * (high - low)
 
         langevin_dynamics_noise_std = torch.clamp(self.langevin_dynamics_noise_std, min=0.000001)
-        
+
         predicted_embeddings = self.corrupt_embeddings(projected_caption_embeddings) # B, C, W, H
         if initialize_predictions is not None:
             predicted_embeddings[batch_size - initialize_predictions.shape[0]:] = initialize_predictions # NOTE this assumes the fresh data is concatted first
@@ -109,23 +109,38 @@ class EBT_IMG_T2I(L.LightningModule):
                     predicted_embeddings = predicted_embeddings.requires_grad_() # B, C, W, H
                 else: # default, do detach
                     predicted_embeddings = predicted_embeddings.detach().requires_grad_() # B, C, W, H
-                
+
                 if self.hparams.langevin_dynamics_noise != 0 and not (no_randomness and self.hparams.no_langevin_during_eval):
                     ld_noise = torch.randn_like(predicted_embeddings.detach(), device=predicted_embeddings.device) * langevin_dynamics_noise_std # langevin dynamics
                     predicted_embeddings = predicted_embeddings + ld_noise
-                                
-                energy_preds = self.transformer(predicted_embeddings, condition).squeeze() # energy_preds is B, T (where T is num patches)
-                energy_preds = energy_preds.mean(dim=[1]).reshape(-1) # B
+
+                energy_preds = self.transformer(predicted_embeddings, condition)
+                energy_preds = energy_preds.mean(dim=(-1, -2)) # B
                 predicted_energies_list.append(energy_preds)
 
                 if self.hparams.truncate_mcmc:  #retain_graph defaults to create_graph value here; if learning is true then create_graph else dont (inference)
                     if i == (len(mcmc_steps) - 1):
-                        predicted_embeds_grad = torch.autograd.grad([energy_preds.sum()], [predicted_embeddings], create_graph=learning)[0]
+                        predicted_embeds_grad = torch.autograd.grad(
+                            outputs=energy_preds,
+                            inputs=predicted_embeddings,
+                            grad_outputs=torch.ones_like(energy_preds),
+                            create_graph=learning
+                        )[0]
                     else:
-                        predicted_embeds_grad = torch.autograd.grad([energy_preds.sum()], [predicted_embeddings], create_graph=False)[0]
+                        predicted_embeds_grad = torch.autograd.grad(
+                            outputs=energy_preds,
+                            inputs=predicted_embeddings,
+                            grad_outputs=torch.ones_like(energy_preds),
+                            create_graph=False
+                        )[0]
                 else:
-                    predicted_embeds_grad = torch.autograd.grad([energy_preds.sum()], [predicted_embeddings], create_graph=learning)[0]
-                
+                    predicted_embeds_grad = torch.autograd.grad(
+                        outputs=energy_preds,
+                        inputs=predicted_embeddings,
+                        grad_outputs=torch.ones_like(energy_preds),
+                        create_graph=learning
+                    )[0]
+
                 if self.hparams.clamp_futures_grad:
                     min_and_max = self.hparams.clamp_futures_grad_max_change / (self.alpha)
                     # predicted_embeds_grad = scale_clamp(predicted_embeds_grad, -min_and_max, min_and_max)
@@ -133,14 +148,14 @@ class EBT_IMG_T2I(L.LightningModule):
 
                 if torch.isnan(predicted_embeds_grad).any() or torch.isinf(predicted_embeds_grad).any():
                     raise ValueError("NaN or Inf gradients detected during MCMC.")
-                    
+
                 predicted_embeddings = predicted_embeddings - alpha * predicted_embeds_grad
-                
+
                 predicted_embeddings_list.append(predicted_embeddings)
 
         return predicted_embeddings_list, predicted_energies_list
-        
-    
+
+
     def forward_loss_wrapper(self, x, phase="train"):
         no_randomness = False if phase == "train" else True
         learning = (phase == "train")
@@ -170,7 +185,7 @@ class EBT_IMG_T2I(L.LightningModule):
                 if mcmc_step == (total_mcmc_steps - 1):
                     final_reconstruction_loss = self.smooth_l1(predicted_embeddings, image_embeddings).detach()
                     reconstruction_loss = reconstruction_loss / total_mcmc_steps # normalize so is indifferent to number of mcmc steps
-            
+
             #pure logging things (no function for training)
             if mcmc_step == 0:
                 initial_loss = self.smooth_l1(predicted_embeddings, image_embeddings).detach()
@@ -211,7 +226,7 @@ class EBT_IMG_T2I(L.LightningModule):
 
                 log_dict['generated_image'] = decoded_images[0]
                 log_dict['original_image'] = decoded_images[1]
-        
+
         return log_dict
 
 
@@ -225,9 +240,9 @@ class EBT_IMG_T2I(L.LightningModule):
                 predicted_tokens = torch.zeros(size=(bs, self.raw_embeddings_shape[0], self.raw_embeddings_shape[1], self.raw_embeddings_shape[2]), device = self.device)
             else:
                 raise NotImplementedError(f"{self.hparams.denoising_initial_condition} denoising_initial_condition not yet supported")
-            
+
             return predicted_tokens
-    
+
     def ebt_advanced_inference(self, caption_embeddings, start_pos=0, learning=True):
         pass
         raise NotImplementedError("have not implemented this yet")

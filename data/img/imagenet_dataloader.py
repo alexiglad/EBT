@@ -35,15 +35,6 @@ class ImageNetDataset(Dataset):
         )
         
         print(f"ImageNet {split} dataset loaded with {len(self.ds)} samples")
-        try:
-            sample0 = self.ds[0]
-            img0 = sample0['image']
-            if img0.mode == 'L' or img0.mode == 'RGBA':
-                img0 = img0.convert("RGB")
-            t0 = self.transform(img0)
-            print(f"sample transformed image shape: {t0.shape}")
-        except Exception as e:
-            print(f"shape check error: {e}")
 
     def __len__(self):
         return len(self.ds)

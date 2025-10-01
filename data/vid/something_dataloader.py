@@ -9,6 +9,7 @@ import random
 import subprocess
 import json
 import pandas
+import h5py
 from data.vid.data_preprocessor import remove_padding, crop_to_square, get_all_frames, handle_corrupt_file
 
 class SomethingDataset(Dataset):
@@ -82,6 +83,13 @@ class SomethingDataset(Dataset):
         self.file_list = list(annotations.apply(lambda r: 
         f"{self.dataset_dir}/20bn-something-something-v2/{r.id}.webm", axis=1))
 
+        # Limit dataset size during preencoding to avoid disk space issues
+        if self.hparams.preencode_video:
+            limit_percentage = getattr(self.hparams, 'vid_preencoding_ratio', 1.0)
+            limit_count = int(len(self.file_list) * limit_percentage)
+            self.file_list = self.file_list[:limit_count]
+            print(f"Preencoding mode: Limited to {limit_count} videos ({limit_percentage*100}% of dataset)")
+
         # self.file_list = list(filter(os.path.exists, self.file_list))
 
         if self.ignore_filepath:
@@ -94,8 +102,24 @@ class SomethingDataset(Dataset):
                 if new_fp not in self.ignore_files:
                     new_file_list.append(fp)
             self.file_list = new_file_list
-        
+
+        # Handle preencoding
+        self.hdf5_video_ids = list(annotations.apply(lambda r: f"{r.id}.webm", axis=1))
+        self.video_encodings = None
+
+        if self.hparams.preencode_video and os.path.exists(self.hparams.hdf5_file_path):
+            try:
+                self.video_encodings = h5py.File(self.hparams.hdf5_file_path, 'r')
+            except Exception as e:
+                print(f"Warning: Could not open HDF5 file {self.hparams.hdf5_file_path}: {e}. Using original file list.")
+                self.video_encodings = None
                 
+    
+    def switch_to_encoded(self):
+        if self.video_encodings is None and os.path.exists(self.hparams.hdf5_file_path):
+            self.video_encodings = h5py.File(self.hparams.hdf5_file_path, "r")
+            print("Preencoding finished, switching dataloader to encoded tensors", flush=True)
+
     def get_length(self, filename):
         command = self.ffprobe + ' -v quiet -print_format json -show_format "{}"'.format(filename)
         data = json.loads(subprocess.check_output(command, shell=True))
@@ -127,6 +151,8 @@ class SomethingDataset(Dataset):
 
     def __getitem__(self, idx):
         video_path = self.file_list[idx]
+        video_id = self.hdf5_video_ids[idx]
+        
         try:
             video_length = self.get_length(video_path)
             label = self.labels[idx]
@@ -161,6 +187,28 @@ class SomethingDataset(Dataset):
 
                     frame_idx_list = (total_frames/video_length
                                     *torch.linspace(start_time, end_time, steps=self.num_frames)).long()
+            
+
+            # Handle preencoded sampling
+            if self.hparams.preencode_video and os.path.exists(self.hparams.hdf5_file_path) and self.video_encodings is not None:
+                # print(f"Found video id: {video_id}")
+                try:
+                    encoding = self.video_encodings[f"{self.split}/{video_id}"]
+                    selected_frames = []
+                    for idx in frame_idx_list:
+                        frame_idx = min(idx.item(), encoding.shape[0] - 1)
+                        selected_frames.append(torch.tensor(encoding[frame_idx]))
+                    
+                    encoded_frames = torch.stack(selected_frames)
+
+                    if self.hparams.model_name in ["ebt", "baseline_transformer"]:
+                        return encoded_frames
+                    else:
+                        label = self.labels[idx]
+                        return encoded_frames, label
+                except Exception as e:
+                    print(f"Warning: Failed to load preencoded data for {video_id}: {e}. Falling back to video processing.")
+            
 
             frames = []
             # if self.hparams.debug_dataloader:
@@ -210,6 +258,9 @@ class SomethingDataset(Dataset):
 
             frames = torch.stack(frames)
             if self.hparams.model_name in ["ebt", "baseline_transformer"]:
+                # Sending frames to preencoding.
+                if self.hparams.preencode_video and self.video_encodings is None:
+                    return frames, video_id
                 return frames
             else:
                 return frames, label

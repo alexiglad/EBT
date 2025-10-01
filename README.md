@@ -52,6 +52,14 @@ The key parameters in these job scripts are *the RUN_NAME, MODEL_NAME, and MODEL
 
 If you want to do multinode, you may need to set `ntasks = ngpus` and run the code using `srun python filename.py` (see the [job_scripts/nlp/pretrain/ebt_s1_mn.sh](job_scripts/nlp/pretrain/ebt_s1_mn.sh) file. Note that very little multinode training was used for this paper, hence the lack of exploration of multinode code in the codebase. *You may also need to disable GPU binding in slurm headers (i.e. dont have `#SBATCH --gpu-bind=verbose,closest`)*, more on that [here](https://lightning.ai/docs/pytorch/stable/clouds/cluster_advanced.html).
 
+To configure your job to support Preempt/Requeue, add the lines below to your SLURM config:
+
+```
+#SBATCH --signal=SIGTERM@90
+#SBATCH --requeue
+#SBATCH --open-mode=append
+```
+
 ##### Run example minimalistic training loop for Transformer++ vs EBT language models (NOTE this doesn't reproduce paper results)
 
 ```

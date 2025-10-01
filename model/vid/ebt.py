@@ -146,12 +146,23 @@ class EBT_VID(L.LightningModule):
         no_randomness = False if phase == "train" else True
         learning = (phase == "train")
         #real embeddings here are embeddings extracted from the real video, predicted_embeddings are the predictions (initial pred is often random)   
-        batch_size = x.shape[0]
-        seq_length = x.shape[1]
-        x = x.reshape(-1, *x.shape[2:]) # B*(S+1), C, W, H
+        if self.hparams.preencode_video and os.path.exists(self.hparams.hdf5_file_path):
+            # print(f"Using pre-computed embeddings!")
+            if self.hparams.backbone_type == "dinov2":
+                real_embeddings = x[:, :, 0, :]
+            elif self.hparams.backbone_type == "vae":
+                real_embeddings = x
 
-        real_embeddings = get_encoded_images(x, self.hparams.backbone_type, self.image_encoder, sdxl_vae_standardization = self.hparams.sdxl_vae_standardization)
-        real_embeddings = real_embeddings.reshape(batch_size, seq_length, self.encoder_dim) # B, S+1, D
+        else:
+            batch_size = x.shape[0]
+            seq_length = x.shape[1]
+
+            x = x.reshape(-1, *x.shape[2:]) # B*(S+1), C, W, H
+
+            real_embeddings = get_encoded_images(x, self.hparams.backbone_type, self.image_encoder, sdxl_vae_standardization = self.hparams.sdxl_vae_standardization)
+            # print(f"real embeddings shape before reshape: {real_embeddings.shape}")
+            real_embeddings = real_embeddings.reshape(batch_size, seq_length, self.encoder_dim) # B, S+1, D
+            # print(f"real embeddings shape after reshape: {real_embeddings.shape}")
 
         if not no_randomness and self.mcmc_replay_buffer: # dont do this when doing val/testing
             real_embeddings_input, replay_buffer_embeddings, real_embeddings_gt = self.replay_buffer.get_batch(real_embeddings) # this automatically does indexing for inputs and gt next embeddings while also passing back the replay buffer embeddings

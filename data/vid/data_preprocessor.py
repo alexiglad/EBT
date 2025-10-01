@@ -79,4 +79,4 @@ def handle_corrupt_file(exception, video_path, log_path):
         Exception string: {str(exception)}
         """
 
-        raise Exception(error_text)
+        # raise Exception(error_text)

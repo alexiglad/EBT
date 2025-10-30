@@ -124,8 +124,9 @@ The inference scripts are located under the specific modality desired and under 
 
 A more thorough structure tree of every file is also in [CODE_INFO.md](./CODE_INFO.md).
 
-## Additional Resources for Scalability
+## Additional Resources
 - [JVP Flash Attention Implementation](https://github.com/amorehead/jvp_flash_attention), enabling flash attention with 2nd order derivatives (HVPs)
+- [NanoEBM](https://github.com/sdan/nanoEBM?tab=readme-ov-file)
 
 ## Citation
 

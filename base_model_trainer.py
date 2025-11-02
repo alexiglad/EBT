@@ -11,6 +11,7 @@ import gc
 
 from data.vid.ucf_dataloader import *
 from data.vid.kinetics_dataloader import *
+from data.vid.something_dataloader import SomethingDataset
 from data.img.imagenet_dataloader import *
 from data.img.coco_tiny_dataset import COCOTinyDataset
 from data.img.coco_medium_dataset import COCOMediumDataset
@@ -45,6 +46,7 @@ from inference.img.generate_image import generate_image
 from optimization import (WarmUpCosineAnnealingLR, LARS, exclude_bias_and_norm, StableAdamW, StableAdamWUnfused)
 from utils import text_logger
 from utils.metrics_calculator import get_torchmetrics
+from data.vid.feature_extractor import encode_dataset_features
 
 
 class ModelTrainer(L.LightningModule):
@@ -515,6 +517,17 @@ class ModelTrainer(L.LightningModule):
                 self.val_ds = SQuADDataset(self.hparams, split = 'validation')
             else:
                 raise NotImplementedError("Haven't implemented this dataset yet")
+
+            if self.hparams.preencode_video:
+                if not os.path.exists(self.hparams.hdf5_file_path):
+                    encode_dataset_features(self.hparams, self.model.image_encoder, self.train_ds, self.hparams.hdf5_file_path, split="train")
+                    encode_dataset_features(self.hparams, self.model.image_encoder, self.val_ds, self.hparams.hdf5_file_path, split="val")
+                    print(f"preencoding successful -  dataset path at {self.hparams.hdf5_file_path}")
+                    self.train_ds.switch_to_encoded()
+                    self.val_ds.switch_to_encoded()
+                else:
+                    print(f"preencoded dataset path {self.hparams.hdf5_file_path} already exists, skipping preencoding")
+                    
             print(f"{self.hparams.dataset_name} length of train_dataset: {len(self.train_ds)} and val_dataset: {len(self.val_ds)}")
             
         # Assign test dataset for use in dataloader(s)

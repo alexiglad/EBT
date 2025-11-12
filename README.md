@@ -126,6 +126,7 @@ A more thorough structure tree of every file is also in [CODE_INFO.md](./CODE_IN
 
 ## Additional Resources
 - [JVP Flash Attention Implementation](https://github.com/amorehead/jvp_flash_attention), enabling flash attention with 2nd order derivatives (HVPs)
+- [EBT-Policy](https://energy-based-transformers.github.io/ebt-policy/), using EBTs for policies, enabling real-world robotic reasoning
 
 ## Citation
 

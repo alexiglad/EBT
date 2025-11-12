@@ -126,7 +126,6 @@ A more thorough structure tree of every file is also in [CODE_INFO.md](./CODE_IN
 
 ## Additional Resources
 - [JVP Flash Attention Implementation](https://github.com/amorehead/jvp_flash_attention), enabling flash attention with 2nd order derivatives (HVPs)
-- [NanoEBM](https://github.com/sdan/nanoEBM?tab=readme-ov-file)
 
 ## Citation
 

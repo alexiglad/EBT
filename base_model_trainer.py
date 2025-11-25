@@ -518,7 +518,7 @@ class ModelTrainer(L.LightningModule):
             else:
                 raise NotImplementedError("Haven't implemented this dataset yet")
 
-            if self.hparams.preencode_video:
+            if self.hparams.preencode_video: #TODO fix this code so it doesnt work inside of BMT and instead works instead the datasets themselves, also add test set support
                 if not os.path.exists(self.hparams.hdf5_file_path):
                     encode_dataset_features(self.hparams, self.model.image_encoder, self.train_ds, self.hparams.hdf5_file_path, split="train")
                     encode_dataset_features(self.hparams, self.model.image_encoder, self.val_ds, self.hparams.hdf5_file_path, split="val")

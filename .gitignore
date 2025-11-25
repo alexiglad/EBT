@@ -155,6 +155,4 @@ bash_scripts/debug/debug_dataloader.sh
 work.sh
 **/.nfs000*
 inference_results/**
-
-# preempt temp checkpoints
-*.ckpt
+*.ckpt # preempt temp checkpoints

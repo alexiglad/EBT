@@ -77,9 +77,8 @@ def main(args):
         print("CUDA_VISIBLE_DEVICES:", os.environ.get("CUDA_VISIBLE_DEVICES"))
 
     # Set temp directory for lightning checkpointing on preemption
-    temp_dir = "./logs/temp/"
-    os.makedirs(temp_dir, exist_ok=True)
-    tempfile.tempdir = temp_dir
+    os.makedirs(args.temp_dir, exist_ok=True)
+    tempfile.tempdir = args.temp_dir
 
     # txt_logger is no longer supported [deprecated]
     # txt_logger = text_logger.setup_custom_logger(log_filename = args.debug_log_filename, print_console = True) # this used to be set to args.print_logs but is default true now and print_logs is not used
@@ -179,8 +178,9 @@ def main(args):
     if args.set_matmul_precision is not None: #default is highest
         torch.set_float32_matmul_precision(args.set_matmul_precision)
     
+    ckpt_dir = f"./logs/checkpoints/{args.run_name}_{os.environ.get('SLURM_JOBID')}_{dt_string}"
     checkpoint_filename = "epoch={epoch}-step={step}-" + args.checkpoint_monitor_string + "={"+args.checkpoint_monitor_string+":.4f}"
-    checkpoint_callback = ModelCheckpoint(monitor=args.checkpoint_monitor_string, mode = args.checkpoint_monitor_mode, save_top_k=args.save_top_k_ckpts, save_last = True, dirpath=f"./logs/checkpoints/{args.run_name}_{os.environ.get('SLURM_JOBID')}_", filename=checkpoint_filename, verbose=True)
+    checkpoint_callback = ModelCheckpoint(monitor=args.checkpoint_monitor_string, mode = args.checkpoint_monitor_mode, save_top_k=args.save_top_k_ckpts, save_last = True, dirpath=ckpt_dir, filename=checkpoint_filename, verbose=True)
     
     for name, param in model_trainer.model.named_parameters():
         if not param.requires_grad:
@@ -253,7 +253,7 @@ def main(args):
         else:
             raise NotImplementedError(f"no post test evaluation setup for this modality: {args.modality} yet")
 
-def set_trainer(args, wandb_logger, checkpoint_callback, stage = "train"):
+def set_trainer(args, wandb_logger, checkpoint_callback, ckpt_dir):
     torch.autograd.set_detect_anomaly(args.detect_anomaly) #NOTE seems pl detect anomaly is not working so manually set it here
 
     if args.find_unused_parameters: #for if ever need more manipulation
@@ -278,6 +278,7 @@ def set_trainer(args, wandb_logger, checkpoint_callback, stage = "train"):
         enable_model_summary=args.log_model_archi,
         callbacks = [checkpoint_callback, ModelSummary(max_depth=-1)],
         strategy = args.distributed_strategy, 
+        default_root_dir=f"{ckpt_dir}/preempts",
         plugins=[SLURMEnvironment(requeue_signal=signal.SIGTERM)],
         enable_checkpointing=True,
         fast_dev_run = args.fast_dev_run,
@@ -335,6 +336,12 @@ if __name__ == '__main__':
     parser.add_argument("--sdxl_vae_standardization", help="whether to standardize vae encodings according to sdxl by multiplying by 0.18215.", action="store_true", default=False)
 
     parser.add_argument("--weight_tie_vae_proj", help="for baseline transformer, weight ties the projection to vae latent space", action="store_true", default = False)
+
+    parser.add_argument("--preencode_video", help="boolean to toggle video dataset preencoding", action="store_true", default=False)
+
+    parser.add_argument("--hdf5_file_path", help="path to preencoded video dataset hdf5 file", type=str, default="")
+
+    parser.add_argument("--vid_preencoding_pct", help="percentage of videos to preencode, defaults to preencoding everything", type=float, default=1.0)
      
     # NLP SPECIFIC PARAMS ############################################################################################################
 
@@ -583,8 +590,6 @@ if __name__ == '__main__':
     parser.add_argument("--image_dims", help="List of image dimensions", nargs='+', type=int, default = [224, 224])
     
     parser.add_argument("--no_randomness_dataloader", help="makes dataloader have no randomness by only sampling from start", action="store_true", default=False)
-        
-    parser.add_argument("--preprocess_data", help="center crops images - helps to avoid black bars on sides which cause issues with unstable gradient. not used anymore", action="store_true", default=False)
     
     parser.add_argument("--crop_all_samples", help="if preprocess data is enabled this will crop all samples. not used anymore", action="store_true", default=False)
     
@@ -695,6 +700,8 @@ if __name__ == '__main__':
     parser.add_argument("--log_gradients", help="logs gradients at every step to wandb to debug them", action="store_true", default=False)
 
     parser.add_argument("--log_every_n_steps", help="turns on logger freq via pl, not advised to use this", type=int, default=50)
+
+    parser.add_argument("--temp_dir", help="default temp directory", choices = ["min", "max_gap", "max"], type=str, default="./logs/temp/")
 
     # CHECKPOINTING ##################################################################
 

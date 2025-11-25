@@ -58,8 +58,9 @@ class AggregateDataset(Dataset):
         # Finally, check if hparam is set
         elif hparams.ffprobe_path is not None:
             self.ffprobe = hparams.ffprobe_path
-        # Default to scratch user directory
-        self.ffprobe = f'/scratch/{self.current_user}/ffprobe'
+        else:
+            raise ValueError("no ffprobe found")
+        assert os.path.exists(self.ffprobe)
         
         self.class_names = []
         self.file_list = []

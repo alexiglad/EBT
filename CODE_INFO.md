@@ -69,7 +69,6 @@
 │       │   ├── k400.txt
 │       │   ├── ssv2.txt
 │       │   └── ucf.txt
-│       ├── data_preprocessor.py
 │       ├── downloader
 │       │   └── ego4d.py
 │       ├── kinetics_dataloader.py

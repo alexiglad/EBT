@@ -10,7 +10,8 @@ import subprocess
 import json
 import pandas
 import h5py
-from data.vid.data_preprocessor import remove_padding, crop_to_square, get_all_frames, handle_corrupt_file
+from data.vid.video_data_utils import handle_corrupt_file
+
 
 class SomethingDataset(Dataset):
     def __init__(self, hparams, split, transform, labels_dir = 'labels/', ignore_filepath=""):
@@ -22,7 +23,8 @@ class SomethingDataset(Dataset):
         """
         self.current_user = os.getenv("USER")
         self.hparams = hparams
-        self.dataset_dir = self.hparams.dataset_dir if self.hparams.dataset_dir != "" else f"/scratch/{self.current_user}/something-something-v2/"
+        hf_home = os.getenv('HF_HOME')
+        self.dataset_dir = self.hparams.dataset_dir if self.hparams.dataset_dir != "" else hf_home
         self.labels_dir = self.dataset_dir + '/' + labels_dir
         self.transform = transform
         self.num_frames = self.hparams.context_length
@@ -51,8 +53,7 @@ class SomethingDataset(Dataset):
         elif hparams.ffprobe_path is not None:
             self.ffprobe = hparams.ffprobe_path
         else:
-            # Default to scratch user directory
-            self.ffprobe = f'/scratch/{self.current_user}/ffprobe'
+            raise ValueError("no ffprobe found")
         assert os.path.exists(self.ffprobe)
         
         self.class_names = []
@@ -85,7 +86,7 @@ class SomethingDataset(Dataset):
 
         # Limit dataset size during preencoding to avoid disk space issues
         if self.hparams.preencode_video:
-            limit_percentage = getattr(self.hparams, 'vid_preencoding_ratio', 1.0)
+            limit_percentage = getattr(self.hparams, 'vid_preencoding_pct', 1.0)
             limit_count = int(len(self.file_list) * limit_percentage)
             self.file_list = self.file_list[:limit_count]
             print(f"Preencoding mode: Limited to {limit_count} videos ({limit_percentage*100}% of dataset)")
@@ -224,29 +225,6 @@ class SomethingDataset(Dataset):
                 original_width, original_height = original_frame.shape[:2]
                 pil_image = Image.fromarray(original_frame)
                 
-                if self.hparams.preprocess_data:
-                    frame, cropped = remove_padding(original_frame)  # Assuming this function is defined
-                    if frame.shape[0] < original_height / 2 or frame.shape[1] < original_width / 2:
-                        # Call remove_padding again with different threshold values
-                        frame, _ = remove_padding(frame, threshold_value=10, threshold_ratio=0.9)
-                        if frame.shape[0] < original_height / 2 or frame.shape[1] < original_width / 2:
-                            frame, _ = remove_padding(frame, threshold_value=10, threshold_ratio=0.95)
-                            #code below is for debugging
-                            # if frame.shape[0] < original_height / 2 or frame.shape[1] < original_width / 2:
-                            #     save_path = f"./logs/debug/images/special/{video_path}.png"  # Specify the path where you want to save the image
-                            #     cv2.imwrite(save_path, cv2.cvtColor(original_frame, cv2.COLOR_RGB2BGR))
-
-                    if self.hparams.crop_all_samples or cropped:
-                        frame = crop_to_square(frame)  # Assuming this function is defined, we crop all images generally since dont want non uniform distortion
-
-                #code below is for debugging########################################################################
-                    # cropped_path = f"./logs/debug/images/{idx}_cropped.png"  # Specify the path where you want to save the image
-                    # cv2.imwrite(cropped_path, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-                    # uncropped_path = f"./logs/debug/images/{idx}_uncropped.png"  # Specify the path where you want to save the image
-                    # cv2.imwrite(uncropped_path, cv2.cvtColor(original_frame, cv2.COLOR_RGB2BGR))
-                ##########################################################################################
-
-
                 if self.transform:
                     transformed_frame = self.transform(pil_image)
                     frames.append(transformed_frame)

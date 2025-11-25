@@ -57,8 +57,7 @@ def main():
     elif os.getenv("FFPROBE_PATH") is not None:
         ffprobe = os.getenv("FFPROBE_PATH")
     else:
-        # Default to scratch user directory
-        ffprobe = f'/scratch/{current_user}/ffprobe'
+        raise ValueError("no ffprobe found")
     assert os.path.exists(ffprobe)
 
     parser = argparse.ArgumentParser(

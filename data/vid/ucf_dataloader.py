@@ -9,7 +9,7 @@ import random
 import subprocess
 import json
 import getpass
-from data.vid.data_preprocessor import remove_padding, crop_to_square, get_all_frames, handle_corrupt_file
+from data.vid.video_data_utils import handle_corrupt_file
 import os
 
 
@@ -25,7 +25,8 @@ class UCF101Dataset(Dataset):
 
         self.current_user = getpass.getuser()
         self.hparams = hparams
-        self.dataset_dir = self.hparams.dataset_dir if self.hparams.dataset_dir != "" else f"/scratch/{self.current_user}/ucf101/"
+        hf_home = os.getenv('HF_HOME')
+        self.dataset_dir = self.hparams.dataset_dir if self.hparams.dataset_dir != "" else hf_home
         self.labels_dir = self.dataset_dir + '/' + labels_dir
         self.transform = transform
         self.num_frames = self.hparams.context_length
@@ -53,20 +54,14 @@ class UCF101Dataset(Dataset):
         elif hparams.ffprobe_path is not None:
             self.ffprobe = hparams.ffprobe_path
         else:
-            # Default to scratch user directory
-            self.ffprobe = f'/scratch/{self.current_user}/ffprobe'
+            raise ValueError("no ffprobe found")
         assert os.path.exists(self.ffprobe)
         
 
         self.class_names = [None] # Labels in classInd.txt are indexed at 1
         self.file_list = []
         self.labels = []
-        self.frame_lookup = None
-
-        if self.hparams.preprocess_data:
-            if not os.path.exists('./logs/debug'): os.mkdir('./logs/debug')
-            if not os.path.exists('./logs/debug/images/'): os.mkdir('./logs/debug/images')
-        
+        self.frame_lookup = None        
 
         with open(self.labels_dir+'classInd.txt') as f:
             for row in f.read().strip().split('\n'):
@@ -178,33 +173,6 @@ class UCF101Dataset(Dataset):
                 if not ret: 
                     print(f"frame is blank at {frame_idx_list[i].item()}")
                     print(video_path)
-
-                original_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                original_height, original_width = frame.shape[:2]
-
-                # pil_image = Image.fromarray(frame)
-
-                if self.hparams.preprocess_data:
-                    frame, cropped = remove_padding(original_frame)  # Assuming this function is defined
-                    if frame.shape[0] < original_height / 2 or frame.shape[1] < original_width / 2:
-                        # Call remove_padding again with different threshold values
-                        frame, _ = remove_padding(frame, threshold_value=10, threshold_ratio=0.9)
-                        if frame.shape[0] < original_height / 2 or frame.shape[1] < original_width / 2:
-                            frame, _ = remove_padding(frame, threshold_value=10, threshold_ratio=0.95)
-                            #code below is for debugging
-                            # if frame.shape[0] < original_height / 2 or frame.shape[1] < original_width / 2:
-                            #     save_path = f"./logs/debug/images/special/{video_path}.png"  # Specify the path where you want to save the image
-                            #     cv2.imwrite(save_path, cv2.cvtColor(original_frame, cv2.COLOR_RGB2BGR))
-                    
-                    if self.hparams.crop_all_samples or cropped:
-                        frame = crop_to_square(frame)  # Assuming this function is defined, we crop all images generally since dont want non uniform distortion
-
-                    #code below is for debugging########################################################################
-                        # cropped_path = f"./logs/debug/images/{idx}_cropped.png"  # Specify the path where you want to save the image
-                        # cv2.imwrite(cropped_path, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-                        # uncropped_path = f"./logs/debug/images/{idx}_uncropped.png"  # Specify the path where you want to save the image
-                        # cv2.imwrite(uncropped_path, cv2.cvtColor(original_frame, cv2.COLOR_RGB2BGR))
-                    ##########################################################################################
 
                 if self.transform:
                     square_pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))

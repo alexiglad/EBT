@@ -57,16 +57,30 @@ class Baseline_Transformer_VID(L.LightningModule):
         return predicted_embeddings
     
     def forward_loss_wrapper(self, x, phase="train"):
-        batch_size = x.shape[0]
-        seq_length = x.shape[1]
-        x = x.reshape(-1, *x.shape[2:]) # BS*(S+1), C, W, H
-        embeddings = get_encoded_images(x, self.hparams.backbone_type, self.image_encoder, sdxl_vae_standardization = self.hparams.sdxl_vae_standardization) 
-        embeddings = embeddings.reshape(batch_size, seq_length, self.encoder_dim) # BS, S+1, D
-        input_embeddings = embeddings[:, :-1] # only input first S; so BS, S, D
+        #real embeddings here are embeddings extracted from the real video, predicted_embeddings are the predictions (initial pred is often random)   
+        if self.hparams.preencode_video and os.path.exists(self.hparams.hdf5_file_path):
+            # print(f"Using pre-computed embeddings!")
+            if self.hparams.backbone_type == "dinov2":
+                real_embeddings = x[:, :, 0, :] # grab only CLS token
+            elif self.hparams.backbone_type == "vae":
+                real_embeddings = x
+
+        else:
+            batch_size = x.shape[0]
+            seq_length = x.shape[1]
+
+            x = x.reshape(-1, *x.shape[2:]) # B*(S+1), C, W, H
+
+            real_embeddings = get_encoded_images(x, self.hparams.backbone_type, self.image_encoder, sdxl_vae_standardization = self.hparams.sdxl_vae_standardization)
+
+            real_embeddings = real_embeddings.reshape(batch_size, seq_length, self.encoder_dim) # B, S+1, D
+
+
+        input_embeddings = real_embeddings[:, :-1] # only input first S; so BS, S, D
 
         predicted_embeddings = self(input_embeddings)
 
-        next_embeddings = embeddings[:, 1:] # compare to last S (as make pred of next element); so BS, S, D
+        next_embeddings = real_embeddings[:, 1:] # compare to last S (as make pred of next element); so BS, S, D
         loss = self.reconstruction_criterion(predicted_embeddings, next_embeddings) # predicted_embeddings has grad and is BS, S, D; next_embeddings is same shape and does not have grad
 
         log_dict = {
